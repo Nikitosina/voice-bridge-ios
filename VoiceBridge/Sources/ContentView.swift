@@ -14,8 +14,10 @@ struct ContentView: View {
                     .keyboardType(.decimalPad)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 40)
-                    .onChange(of: serverIP) { newIP in
-                        manager.serverURL = URL(string: "ws://\(newIP):8765/ws")!
+                    .onChange(of: serverIP) { [self] newIP in
+                        if let url = URL(string: "ws://\(newIP):8765/ws") {
+                            manager.serverURL = url
+                        }
                     }
             }
             

@@ -38,7 +38,15 @@ class AudioManager: NSObject, ObservableObject {
     // MARK: — WebSocket
     private var webSocketTask: URLSessionWebSocketTask?
     // ЗАМЕНИ IP НА IP ТВОЕГО МАКА В ЛОКАЛЬНОЙ СЕТИ
-    private let serverURL = URL(string: "ws://192.168.1.x:8765/ws")!
+    private var _serverURL: URL
+    var serverURL: URL {
+        get { _serverURL }
+        set { _serverURL = newValue }
+    }
+    
+    init() {
+        _serverURL = URL(string: "ws://192.168.1.x:8765/ws")!
+    }
     
     // MARK: — Mic (Record)
     private var micEngine = AVAudioEngine()
