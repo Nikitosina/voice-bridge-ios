@@ -1,0 +1,13 @@
+schemaVersion: 1
+enabledWorkflows:
+  - simulator
+debug: false
+sentryDisabled: false
+setupPreferences:
+  platforms:
+    - iOS
+sessionDefaults:
+  projectPath: VoiceBridge.xcodeproj
+  scheme: VoiceBridge
+  simulatorId: 5E181972-354C-42DD-9275-6272926C8E1E
+  simulatorName: iPhone Air

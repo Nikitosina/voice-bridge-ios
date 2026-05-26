@@ -30,6 +30,13 @@ enum BridgeState: Equatable {
         case .error: return .red
         }
     }
+
+    var isError: Bool {
+        if case .error = self {
+            return true
+        }
+        return false
+    }
 }
 
 class AudioManager: NSObject, ObservableObject {
@@ -44,7 +51,7 @@ class AudioManager: NSObject, ObservableObject {
         set { _serverURL = newValue }
     }
     
-    init() {
+    override init() {
         _serverURL = URL(string: "ws://192.168.1.x:8765/ws")!
     }
     
@@ -59,9 +66,9 @@ class AudioManager: NSObject, ObservableObject {
     
     // MARK: — VAD state
     private var isRecordingVoice = false
-    private var silenceTimer: Timer?
+    private var silenceWorkItem: DispatchWorkItem?
     private let silenceThreshold: Float = 0.015
-    private let silenceDuration = 1.2
+    private let silenceDuration: TimeInterval = 1.2
 
     func connect() {
         state = .connecting
@@ -73,12 +80,12 @@ class AudioManager: NSObject, ObservableObject {
     }
     
     func disconnect() {
-        Task { [weak self] in
+        Task { @MainActor [weak self] in
             self?.stopMic()
             self?.stopPlayback()
             self?.webSocketTask?.cancel(with: .goingAway, reason: nil)
             self?.webSocketTask = nil
-            await MainActor.run { self?.state = .idle }
+            self?.state = .idle
         }
     }
     
@@ -86,22 +93,55 @@ class AudioManager: NSObject, ObservableObject {
     
     private func startMic() {
         let inputNode = micEngine.inputNode
-        inputNode.installTap(onBus: 0, bufferSize: 1024, format: micFormat) { [weak self] buffer, _ in
-            self?.processMicBuffer(buffer)
+        let hardwareFormat = inputNode.outputFormat(forBus: 0)
+        
+        // Install tap in the hardware's native format to avoid format mismatch crash
+        inputNode.installTap(onBus: 0, bufferSize: 1024, format: hardwareFormat) { [weak self] buffer, _ in
+            guard let self = self else { return }
+            // Convert to our desired 16kHz Float32 format for the server
+            guard let converted = self.convertToMicFormat(buffer) else { return }
+            self.processMicBuffer(converted)
         }
         do {
             micEngine.prepare()
             try micEngine.start()
             state = .listening
+            isRecordingVoice = true
         } catch {
             state = .error("Mic: \(error.localizedDescription)")
         }
     }
     
+    private func convertToMicFormat(_ buffer: AVAudioPCMBuffer) -> AVAudioPCMBuffer? {
+        guard let converter = AVAudioConverter(from: buffer.format, to: micFormat) else { return nil }
+        let frameCount = AVAudioFrameCount(Double(buffer.frameLength) * micFormat.sampleRate / buffer.format.sampleRate)
+        guard let output = AVAudioPCMBuffer(pcmFormat: micFormat, frameCapacity: frameCount) else { return nil }
+        
+        var inputPosition: AVAudioFrameCount = 0
+        let inputBlock: AVAudioConverterInputBlock = { inNumPackets, outStatus in
+            if inputPosition >= buffer.frameLength {
+                outStatus.pointee = .noDataNow
+                return nil
+            }
+            outStatus.pointee = .haveData
+            inputPosition = buffer.frameLength // single-pass
+            return buffer
+        }
+        
+        var error: NSError?
+        converter.convert(to: output, error: &error, withInputFrom: inputBlock)
+        if let error = error {
+            print("Audio conversion error: \(error)")
+            return nil
+        }
+        return output
+    }
+    
     private func stopMic() {
         micEngine.inputNode.removeTap(onBus: 0)
         micEngine.stop()
-        silenceTimer?.invalidate()
+        silenceWorkItem?.cancel()
+        silenceWorkItem = nil
         isRecordingVoice = false
     }
     
@@ -130,6 +170,11 @@ class AudioManager: NSObject, ObservableObject {
         playbackEngine.reset()
     }
     
+    private func completePlaybackCycle() {
+        stopPlayback()
+        startMic()
+    }
+    
     // MARK: — VAD + Audio Streaming
     
     private func processMicBuffer(_ buffer: AVAudioPCMBuffer) {
@@ -137,30 +182,33 @@ class AudioManager: NSObject, ObservableObject {
         let frames = Int(buffer.frameLength)
         
         // RMS
-        var sum: Float = 0
-        for i in 0..<frames { sum += channelData[i] * channelData[i] }
-        let rms = sqrt(sum / Float(frames))
-        
-        if rms > silenceThreshold {
-            if !isRecordingVoice {
-                isRecordingVoice = true
-            }
-            silenceTimer?.invalidate()
-        } else {
-            if isRecordingVoice {
-                silenceTimer?.invalidate()
-                silenceTimer = Timer.scheduledTimer(withTimeInterval: silenceDuration, repeats: false) { [weak self] _ in
-                    self?.finishUtterance()
-                }
-            }
-        }
+//        var sum: Float = 0
+//        for i in 0..<frames { sum += channelData[i] * channelData[i] }
+//        let rms = sqrt(sum / Float(frames))
+
+//        if rms > silenceThreshold {
+//            if !isRecordingVoice {
+//                isRecordingVoice = true
+//            }
+//            silenceWorkItem?.cancel()
+//            silenceWorkItem = nil
+//        } else {
+//            if isRecordingVoice {
+//                silenceWorkItem?.cancel()
+//                let item = DispatchWorkItem { [weak self] in
+//                    self?.finishUtterance()
+//                }
+//                silenceWorkItem = item
+//                DispatchQueue.main.asyncAfter(deadline: .now() + silenceDuration, execute: item)
+//            }
+//        }
         
         // Шлём сырой PCM f32 на сервер (сервер сам накопит)
         let data = Data(bytes: channelData, count: frames * MemoryLayout<Float>.size)
         sendBinary(data)
     }
     
-    private func finishUtterance() {
+    func finishUtterance() {
         guard isRecordingVoice else { return }
         isRecordingVoice = false
         stopMic()
@@ -212,9 +260,15 @@ class AudioManager: NSObject, ObservableObject {
                 let stt = json["stt"] as? String
                 self.state = .processing(stt: stt)
             case "done_speaking":
-                // Цикл завершён — возвращаемся к слушанию
-                self.stopPlayback()
-                self.startMic()
+                // Schedule a tiny silent sentinel buffer AFTER all audio.
+                // Its completion handler fires once all real audio has played.
+                guard let sentinel = AVAudioPCMBuffer(pcmFormat: playbackFormat, frameCapacity: 1) else { return }
+                sentinel.frameLength = 1
+                playerNode.scheduleBuffer(sentinel) { [weak self] in
+                    DispatchQueue.main.async {
+                        self?.completePlaybackCycle()
+                    }
+                }
             default: break
             }
         }

@@ -2,7 +2,7 @@ import SwiftUI
 
 struct ContentView: View {
     @StateObject private var manager = AudioManager()
-    @State private var serverIP: String = "192.168.1.x"
+    @State private var serverIP: String = UserDefaults.standard.string(forKey: "lastServerIP") ?? "192.168.1.x"
     
     var body: some View {
         VStack(spacing: 40) {
@@ -17,6 +17,7 @@ struct ContentView: View {
                     .onChange(of: serverIP) { [self] newIP in
                         if let url = URL(string: "ws://\(newIP):8765/ws") {
                             manager.serverURL = url
+                            UserDefaults.standard.set(newIP, forKey: "lastServerIP")
                         }
                     }
             }
@@ -30,6 +31,8 @@ struct ContentView: View {
                 switch manager.state {
                 case .idle, .error:
                     manager.connect()
+                case .listening:
+                    manager.finishUtterance()
                 default:
                     manager.disconnect()
                 }
@@ -39,7 +42,7 @@ struct ContentView: View {
                         .fill(manager.state.color)
                         .frame(width: 120, height: 120)
                         .shadow(radius: 10)
-                    Image(systemName: (manager.state == .idle || manager.state == .error) ? "phone.fill" : "phone.down.fill")
+                    Image(systemName: manager.state == .listening ? "pause.fill" : ((manager.state == .idle || manager.state.isError) ? "phone.fill" : "phone.down.fill"))
                         .font(.system(size: 40))
                         .foregroundColor(.white)
                 }
@@ -54,5 +57,10 @@ struct ContentView: View {
                 .foregroundColor(.secondary)
         }
         .padding()
+        .onAppear {
+            if let url = URL(string: "ws://\(serverIP):8765/ws") {
+                manager.serverURL = url
+            }
+        }
     }
 }

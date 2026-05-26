@@ -14,7 +14,7 @@
 
 /* Begin PBXFileReference section */
 		0FE85CB2F1589D9A5B7401F5 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
-		406ADF00E48235BE1EA133F4 /* VoiceBridge.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = VoiceBridge.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		406ADF00E48235BE1EA133F4 /* VoiceBridge.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = VoiceBridge.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B4C7EB8CF3A74D2F4228F28C /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		C5D0F04F70F96F40B718BDE5 /* AudioManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioManager.swift; sourceTree = "<group>"; };
 		C7F7B858183ADB4AF4250A10 /* VoiceBridgeApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceBridgeApp.swift; sourceTree = "<group>"; };
@@ -77,8 +77,6 @@
 			attributes = {
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1430;
-				TargetAttributes = {
-				};
 			};
 			buildConfigurationList = 936ADEA0DAF5988A772C9071 /* Build configuration list for PBXProject "VoiceBridge" */;
 			developmentRegion = en;
@@ -180,6 +178,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
+				DEVELOPMENT_TEAM = WPVJY5G9UM;
 				INFOPLIST_FILE = Sources/VoiceBridge/Info.plist;
 				INFOPLIST_PREPROCESS = NO;
 				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
@@ -198,6 +197,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
+				DEVELOPMENT_TEAM = WPVJY5G9UM;
 				INFOPLIST_FILE = Sources/VoiceBridge/Info.plist;
 				INFOPLIST_PREPROCESS = NO;
 				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
